@@ -221,20 +221,58 @@ export default function DashboardPage() {
       return updatedLayouts;
     });
   };
+async function updateDevice(value: boolean, deviceId: string) {
+    try {
+      await fetch("/api/tuya/status", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ 
+            Device_ID: deviceId,
+            value: value,
+         }),
+      });
 
-  const togglePower = (deviceId: string) => {
-    setDevices(devices.map(d => {
-      if (d.id === deviceId) {
+    } catch (error) {
+      console.error(error);
+    }
+  }
+
+const togglePower = async (deviceId: string) => {
+  let newState = false;
+
+  const updatedDevices = devices.map(device => {
+    if (device.id !== deviceId) {
+      return device;
+    }
+
+    const updatedCharacteristics = device.characteristics.map(characteristic => {
+      if (characteristic.name === "Status") {
+        newState = !characteristic.state;
+
         return {
-          ...d,
-          characteristics: d.characteristics.map(c => 
-            c.name === 'Status' ? { ...c, state: !c.state } : c
-          )
+          ...characteristic,
+          state: newState,
         };
       }
-      return d;
-    }));
-  };
+
+      return characteristic;
+    });
+
+    return {
+      ...device,
+      characteristics: updatedCharacteristics,
+    };
+  });
+
+  setDevices(updatedDevices);
+
+  // chama a API depois
+  await updateDevice(newState, deviceId);
+};
+
+  
 
   // Não renderiza nada até que o cliente esteja montado para evitar Hydration Mismatch
   if (!isMounted) return <div className="min-h-screen bg-slate-950" />;
@@ -243,15 +281,24 @@ export default function DashboardPage() {
     <div className="p-6 lg:p-10 max-w-[1600px] mx-auto">
       <header className="flex justify-between items-end mb-10">
         <div>
-          <h2 className="text-2xl font-bold text-white">Dispositivos</h2>
+          <h2 className="text-2xl font-bold text-white tracking-tight">SmartHome Control</h2>
           <p className="text-slate-400 text-sm">Organize e controle seus aparelhos</p>
         </div>
-        <button 
-          onClick={() => setIsModalOpen(true)}
-          className="bg-indigo-600 hover:bg-indigo-500 text-white p-2 rounded-full transition-transform active:scale-95 shadow-lg shadow-indigo-500/20"
-        >
-          <Plus size={24} />
-        </button>
+        <div className="flex gap-3">
+          <button 
+            onClick={() => setIsSidebarOpen(true)}
+            className="bg-slate-800 hover:bg-slate-700 text-white p-3 rounded-2xl transition-all active:scale-95 border border-slate-700"
+            title="Gerenciar Ambientes"
+          >
+            <Settings2 size={20} />
+          </button>
+          <button 
+            onClick={() => setIsModalOpen(true)}
+            className="bg-indigo-600 hover:bg-indigo-500 text-white p-3 rounded-2xl transition-transform active:scale-95 shadow-lg shadow-indigo-500/20"
+          >
+            <Plus size={20} />
+          </button>
+        </div>
       </header>
 
       <div ref={containerRef} className="w-full">
