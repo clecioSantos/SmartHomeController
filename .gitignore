@@ -23,7 +23,7 @@ out/
 build/
 .DS_Store
 *.local
-
+*.env.local
 # production
 /build
 
