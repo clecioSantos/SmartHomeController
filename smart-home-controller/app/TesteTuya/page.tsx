@@ -65,11 +65,11 @@ export default function Page() {
           Atualizar Status
         </button>
 
-        <button onClick={() => updateDevice(true)}>
+        <button onClick={() => updateDevice(true, "valor damy")}>
           Ligar
         </button>
 
-        <button onClick={() => updateDevice(false)}>
+        <button onClick={() => updateDevice(false, "valor damy")}>
           Desligar
         </button>
       </div>
