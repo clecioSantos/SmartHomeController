@@ -63,10 +63,10 @@ async function getAccessToken() {
   return data.result.access_token;
 }
 
-async function getDeviceStatus() {
+async function getDeviceStatus(deviceId: string) {
   const accessToken = await getAccessToken();
 
-  const path = `/v1.0/iot-03/devices/${DEVICE_ID}/status`;
+  const path = `/v1.0/iot-03/devices/${deviceId}/status`;
   const timestamp = Date.now().toString();
 
   const sign = generateSign(
@@ -93,7 +93,11 @@ async function getDeviceStatus() {
 
 export async function GET(req: NextRequest) {
   try {
-    const status = await getDeviceStatus();
+    const { searchParams } = new URL(req.url);
+    const deviceId = searchParams.get('deviceId');
+
+    if (!deviceId) throw new Error("Device ID não fornecido");
+    const status = await getDeviceStatus(deviceId);
 
     return NextResponse.json({
       success: true,
@@ -112,16 +116,19 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const { value } = await req.json();
+    const { value, Device_ID, code } = await req.json();
+
+    const targetId = Device_ID || DEVICE_ID;
+    const targetCode = code || "switch_1";
 
     const accessToken = await getAccessToken();
-    const path = `/v1.0/iot-03/devices/${DEVICE_ID}/commands`;
+    const path = `/v1.0/iot-03/devices/${targetId}/commands`;
     const timestamp = Date.now().toString();
 
     const body = JSON.stringify({
       commands: [
         {
-          code: "switch_1",
+          code: targetCode,
           value,
         },
       ],

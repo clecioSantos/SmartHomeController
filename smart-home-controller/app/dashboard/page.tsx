@@ -17,7 +17,8 @@ import {
   Check,
   Settings2,
   Palette,
-  ChevronRight
+  ChevronRight,
+  Search
 } from 'lucide-react';
 
 // Estilos obrigatórios para o grid
@@ -41,6 +42,7 @@ interface Device {
   name: string;
   location?: Location;
   characteristics: Characteristic[];
+  controlCode?: string;
 }
 
 export default function DashboardPage() {
@@ -97,6 +99,10 @@ export default function DashboardPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingDevice, setEditingDevice] = useState<Device | null>(null);
 
+  // Estados para busca de funcionalidades (features)
+  const [availableCodes, setAvailableCodes] = useState<string[]>([]);
+  const [isLoadingFeatures, setIsLoadingFeatures] = useState(false);
+
   // CARREGAR DADOS: Executa apenas uma vez ao montar o componente
   useEffect(() => {
     const savedDevices = localStorage.getItem('smarthome_devices');
@@ -136,6 +142,75 @@ export default function DashboardPage() {
     setIsMounted(true);
   }, []);
 
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////
+  //
+  //       Nome: refreshDevicesStatus
+  //  Descricao: Consulta a API da Tuya para atualizar o estado real de todos os dispositivos no dashboard
+  //
+  //    Criacao: 26/04/2026  Clecio Santos [SHC-4]
+  // Modificado: 
+  //
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////
+  const refreshDevicesStatus = async () => {
+    if (devices.length === 0) return;
+
+    try {
+      const updatedDevices = await Promise.all(devices.map(async (device) => {
+        // Se nao for um dispositivo real (ID gerado por timestamp), ignora a busca
+        if (device.id.startsWith('dev-')) return device;
+
+        try {
+          const res = await fetch(`/api/tuya/status?deviceId=${device.id}`);
+          const data = await res.json();
+
+          if (data.success && data.deviceStatus?.result) {
+            const statusResult = data.deviceStatus.result;
+            const targetCode = device.controlCode || 'switch_1';
+            
+            // Procura o valor atual da feature vinculada ao botao
+            const remoteStatus = statusResult.find((r: any) => r.code === targetCode);
+
+            if (remoteStatus !== undefined) {
+              const newCharacteristics = device.characteristics.map(char => {
+                if (char.name === "Status") {
+                  return { ...char, state: remoteStatus.value };
+                }
+                return char;
+              });
+              return { ...device, characteristics: newCharacteristics };
+            }
+          }
+        } catch (err) {
+          console.error("Erro ao sincronizar dispositivo individual:", device.id, err);
+        }
+        return device;
+      }));
+
+      setDevices(updatedDevices);
+    } catch (error) {
+      console.error("Erro na rotina de atualizacao global:", error);
+    }
+  };
+
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////
+  //
+  //       Nome: useEffect [Polling]
+  //  Descricao: Gerencia o intervalo de atualizacao automatica a cada 2 segundos
+  //
+  //    Criacao: 26/04/2026  Clecio Santos [SHC-4]
+  // Modificado: 
+  //
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////
+  useEffect(() => {
+    if (!isMounted) return;
+
+    const interval = setInterval(() => {
+      refreshDevicesStatus();
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [isMounted, devices]);
+
   // SALVAR DADOS: Sempre que dispositivos ou layouts mudarem
   useEffect(() => {
     if (isMounted) {
@@ -145,12 +220,42 @@ export default function DashboardPage() {
     }
   }, [devices, layouts, locations, isMounted]);
 
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////
+  //
+  //       Nome: fetchDeviceFeatures
+  //  Descricao: Busca os codigos de estado de um dispositivo via API da Tuya usando Refs de input
+  //
+  //    Criacao: 26/04/2026  Clecio Santos [SHC-4]
+  // Modificado: 
+  //
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////
+  // Função para buscar os códigos do dispositivo
+  const fetchDeviceFeatures = async (id: string) => {
+    if (!id || id.length < 5) return;
+    setIsLoadingFeatures(true);
+    try {
+      const res = await fetch(`/api/tuya/status?deviceId=${id}`);
+      const data = await res.json();
+      if (data.success && data.deviceStatus?.result) {
+        const codes = data.deviceStatus.result.map((item: any) => item.code);
+        setAvailableCodes(codes);
+      } else {
+        setAvailableCodes([]);
+      }
+    } catch (error) {
+      console.error("Erro ao buscar funcionalidades:", error);
+    } finally {
+      setIsLoadingFeatures(false);
+    }
+  };
+
   // Lógica para Salvar (Adicionar ou Editar)
   const handleSaveDevice = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
     const name = formData.get('name') as string;
     const deviceId = formData.get('deviceId') as string;
+    const controlCode = formData.get('controlCode') as string;
     const locationId = formData.get('location') as string;
     const location = locations.find(l => l.id === locationId);
 
@@ -158,10 +263,18 @@ export default function DashboardPage() {
       setDevices(devices.map(d => d.id === editingDevice.id ? { ...d, name, location } : d));
     } else {
       const newId = deviceId || `dev-${Date.now()}`;
+
+      // Validação para evitar IDs duplicados que quebram a renderização do React
+      if (devices.some(d => d.id === newId)) {
+        alert("Erro: Já existe um dispositivo com este ID cadastrado.");
+        return;
+      }
+
       const newDevice: Device = {
         id: newId,
         name,
         location,
+        controlCode: controlCode || 'switch_1',
         characteristics: [{ name: 'Status', state: false }]
       };
       setDevices([...devices, newDevice]);
@@ -171,7 +284,16 @@ export default function DashboardPage() {
         const updatedLayouts = { ...prev };
         const breakpoints = Object.keys(updatedLayouts);
         breakpoints.forEach((bp) => {
-          updatedLayouts[bp] = [...(updatedLayouts[bp] || []), { i: newId, x: 0, y: Infinity, w: 2, h: 3, minW: 2, minH: 3 }];
+          updatedLayouts[bp] = [
+            ...(updatedLayouts[bp] || []), 
+            { 
+              i: newId, 
+              x: 0, 
+              y: Infinity, 
+              w: 2, h: 3, 
+              minW: 2, minH: 3 
+            }
+          ];
         });
         return updatedLayouts;
       });
@@ -179,6 +301,15 @@ export default function DashboardPage() {
     closeModal();
   };
 
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////
+  //
+  //       Nome: handleSaveLocation
+  //  Descricao: Gerencia a criacao e edicao de ambientes e sincroniza as cores nos dispositivos
+  //
+  //    Criacao: 26/04/2026  Clecio Santos [SHC-4]
+  // Modificado: 
+  //
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////
   const handleSaveLocation = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
@@ -197,6 +328,15 @@ export default function DashboardPage() {
     e.currentTarget.reset();
   };
 
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////
+  //
+  //       Nome: removeLocation
+  //  Descricao: Remove um ambiente e limpa as referencias de localizacao nos cards
+  //
+  //    Criacao: 26/04/2026  Clecio Santos [SHC-4]
+  // Modificado: 
+  //
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////
   const removeLocation = (id: string) => {
     if (confirm('Tem certeza que deseja remover este ambiente? Dispositivos vinculados ficarão sem localização.')) {
       setLocations(locations.filter(l => l.id !== id));
@@ -206,11 +346,29 @@ export default function DashboardPage() {
     }
   };
 
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////
+  //
+  //       Nome: closeModal
+  //  Descricao: Fecha o modal de dispositivos e limpa os estados de edicao
+  //
+  //    Criacao: 26/04/2026  Clecio Santos [SHC-4]
+  // Modificado: 
+  //
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////
   const closeModal = () => {
     setIsModalOpen(false);
     setEditingDevice(null);
   };
 
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////
+  //
+  //       Nome: removeDevice
+  //  Descricao: Remove um dispositivo da lista e limpa seu registro em todos os layouts salvos
+  //
+  //    Criacao: 26/04/2026  Clecio Santos [SHC-4]
+  // Modificado: 
+  //
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////
   const removeDevice = (id: string) => {
     setDevices(devices.filter(d => d.id !== id));
     setLayouts((prev: any) => {
@@ -221,7 +379,7 @@ export default function DashboardPage() {
       return updatedLayouts;
     });
   };
-async function updateDevice(value: boolean, deviceId: string) {
+async function updateDevice(value: boolean, deviceId: string, code: string) {
     try {
       await fetch("/api/tuya/status", {
         method: "POST",
@@ -231,6 +389,7 @@ async function updateDevice(value: boolean, deviceId: string) {
         body: JSON.stringify({ 
             Device_ID: deviceId,
             value: value,
+            code: code
          }),
       });
 
@@ -239,13 +398,25 @@ async function updateDevice(value: boolean, deviceId: string) {
     }
   }
 
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////
+  //
+  //       Nome: togglePower
+  //  Descricao: Alterna o estado de energia local e dispara o comando remoto via Tuya
+  //
+  //    Criacao: 26/04/2026  Clecio Santos [SHC-4]
+  // Modificado: 
+  //
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////
 const togglePower = async (deviceId: string) => {
   let newState = false;
+  let targetCode = "switch_1";
 
   const updatedDevices = devices.map(device => {
     if (device.id !== deviceId) {
       return device;
     }
+
+    targetCode = device.controlCode || "switch_1";
 
     const updatedCharacteristics = device.characteristics.map(characteristic => {
       if (characteristic.name === "Status") {
@@ -269,7 +440,7 @@ const togglePower = async (deviceId: string) => {
   setDevices(updatedDevices);
 
   // chama a API depois
-  await updateDevice(newState, deviceId);
+  await updateDevice(newState, deviceId, targetCode);
 };
 
   
@@ -400,16 +571,45 @@ const togglePower = async (deviceId: string) => {
                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 px-1">
                   ID do Dispositivo (DeviceId)
                 </label>
-                <input 
-                  name="deviceId"
-                  type="text" 
-                  required
-                  disabled={!!editingDevice}
-                  defaultValue={editingDevice?.id}
-                  placeholder="Ex: tuya-id-12345" 
-                  className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-5 py-4 focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-white disabled:opacity-50"
-                />
+                <div className="relative">
+                  <input 
+                    name="deviceId"
+                    id="deviceIdInput"
+                    type="text" 
+                    required
+                    disabled={!!editingDevice}
+                    defaultValue={editingDevice?.id}
+                    placeholder="Ex: tuya-id-12345" 
+                    className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-5 py-4 pr-14 focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-white disabled:opacity-50"
+                  />
+                  {!editingDevice && (
+                    <button 
+                      type="button"
+                      onClick={() => fetchDeviceFeatures(deviceIdInputRef.current?.value || "")}
+                      className="absolute right-2 top-2 bottom-2 bg-indigo-600 hover:bg-indigo-500 text-white px-3 rounded-xl transition-colors"
+                    >
+                      {isLoadingFeatures ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Search size={18} />}
+                    </button>
+                  )}
+                </div>
               </div>
+
+              {availableCodes.length > 0 && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 px-1">
+                    Função de Liga/Desliga
+                  </label>
+                  <select 
+                    name="controlCode"
+                    defaultValue={editingDevice?.controlCode}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-5 py-4 focus:ring-2 focus:ring-indigo-500 outline-none appearance-none text-white"
+                  >
+                    {availableCodes.map(code => (
+                      <option key={code} value={code}>{code}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 px-1">
