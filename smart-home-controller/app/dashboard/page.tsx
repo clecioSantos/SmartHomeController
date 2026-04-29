@@ -7,6 +7,9 @@ const ResponsiveGridLayout = dynamic(
   () => import('react-grid-layout').then((m) => m.Responsive),
   { ssr: false }
 );
+import { Layouts, Layout, LayoutItem } from 'react-grid-layout';
+import { db } from "@/lib/firebase";
+import { doc, getDoc, setDoc } from 'firebase/firestore'; 
 import { 
   Plus, 
   Trash2, 
@@ -24,7 +27,6 @@ import {
 // Estilos obrigatórios para o grid
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
-
 
 interface Characteristic {
   name: string;
@@ -48,11 +50,21 @@ interface Device {
 export default function DashboardPage() {
   // Hook para gerenciar a largura do container manualmente
   const containerRef = useRef<HTMLDivElement>(null);
+  const deviceIdInputRef = useRef<HTMLInputElement>(null);
   const [width, setWidth] = useState(1200);
   
   // Estado para evitar erros de hidratação no Next.js
   const [isMounted, setIsMounted] = useState(false);
 
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////
+  //
+  //       Nome: useEffect_ResizeObserver
+  //  Descricao: Monitora o ajuste de tamanho do container para atualizar o grid
+  //
+  //    Criacao: 26/04/2026  Clecio Santos [SHC-4]
+  // Modificado: 
+  //
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////
   useEffect(() => {
     if (!containerRef.current) return;
 
@@ -89,7 +101,7 @@ export default function DashboardPage() {
   ]);
 
   // Gerenciamos o objeto 'layouts' completo para persistir posições em todos os breakpoints
-  const [layouts, setLayouts] = useState<any>({
+  const [layouts, setLayouts] = useState<Layouts>({
     lg: [
       { i: 'dev-1', x: 0, y: 0, w: 2, h: 3, minW: 2, minH: 3 },
       { i: 'dev-2', x: 2, y: 0, w: 2, h: 3, minW: 2, minH: 3 },
@@ -103,49 +115,69 @@ export default function DashboardPage() {
   const [availableCodes, setAvailableCodes] = useState<string[]>([]);
   const [isLoadingFeatures, setIsLoadingFeatures] = useState(false);
 
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////
+  //
+  //       Nome: useEffect_FirestoreLoader
+  //  Descricao: Carrega as configuracoes do Cloud Firestore ao iniciar a aplicacao para persistencia remota
+  //
+  //    Criacao: 26/04/2026  Clecio Santos [SHC-4]
+  // Modificado: 26/04/2026  Clecio Santos [SHC-4] - Adicionado try catch para evitar trava de hidratacao
+  //
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////
   // CARREGAR DADOS: Executa apenas uma vez ao montar o componente
   useEffect(() => {
-    const savedDevices = localStorage.getItem('smarthome_devices');
-    const savedLayouts = localStorage.getItem('smarthome_layouts_v3');
-    const savedLocations = localStorage.getItem('smarthome_locations');
-
-    if (savedDevices) {
+    const loadRemoteData = async () => {
       try {
-        setDevices(JSON.parse(savedDevices));
-      } catch (e) {
-        console.error("Erro ao carregar dispositivos:", e);
-      }
-    }
+        const docRef = doc(db, "smarthomeController", "dashboard_config");
+        const docSnap = await getDoc(docRef);
 
-    if (savedLayouts) {
-      try {
-        setLayouts(JSON.parse(savedLayouts));
-      } catch (e) {
-        console.error("Erro ao carregar layout:", e);
-      }
-    }
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          if (data.devices) setDevices(data.devices);
+          if (data.layouts) setLayouts(data.layouts);
+          if (data.locations) setLocations(data.locations);
+        }
+      } catch (error: any) {
+        console.error("Erro completo:", error);
+        console.error("Mensagem:", error?.message);
+        console.error("Código:", error?.code);
+        console.log(db);
 
-    if (savedLocations) {
-      try {
-        setLocations(JSON.parse(savedLocations));
-      } catch (e) {
-        console.error("Erro ao carregar localizações:", e);
+      } finally {
+        setIsMounted(true);
       }
-    } else {
-      setLocations([
-        { id: '1', name: 'Sala de Estar', color: '#6366f1' },
-        { id: '2', name: 'Cozinha', color: '#f59e0b' },
-        { id: '3', name: 'Quarto', color: '#10b981' },
-      ]);
-    }
+    };
 
-    setIsMounted(true);
+    loadRemoteData();
   }, []);
 
   /////////////////////////////////////////////////////////////////////////////////////////////////////////
   //
+  //       Nome: saveDataToFirestore
+  //  Descricao: Envia o estado atual do dashboard para persistencia remota na nuvem
+  //
+  //    Criacao: 26/04/2026  Clecio Santos [SHC-4]
+  // Modificado: 
+  //
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////
+  const saveDataToFirestore = async (newDevices: Device[], newLayouts: Layouts, newLocations: Location[]) => {
+    if (!isMounted) return;
+    try {
+      await setDoc(doc(db, "smarthomeController", "dashboard_config"), {
+        devices: newDevices,
+        layouts: newLayouts,
+        locations: newLocations,
+        updatedAt: Date.now()
+      });
+    } catch (error) {
+      console.error("Erro ao salvar no Firestore:", error);
+    }
+  };
+
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////
+  //
   //       Nome: refreshDevicesStatus
-  //  Descricao: Consulta a API da Tuya para atualizar o estado real de todos os dispositivos no dashboard
+  //  Descricao: Sincroniza o status dos dispositivos com a API da Tuya sem persistir no banco
   //
   //    Criacao: 26/04/2026  Clecio Santos [SHC-4]
   // Modificado: 
@@ -194,7 +226,7 @@ export default function DashboardPage() {
 
   /////////////////////////////////////////////////////////////////////////////////////////////////////////
   //
-  //       Nome: useEffect [Polling]
+  //       Nome: useEffect_Polling
   //  Descricao: Gerencia o intervalo de atualizacao automatica a cada 2 segundos
   //
   //    Criacao: 26/04/2026  Clecio Santos [SHC-4]
@@ -210,15 +242,6 @@ export default function DashboardPage() {
 
     return () => clearInterval(interval);
   }, [isMounted, devices]);
-
-  // SALVAR DADOS: Sempre que dispositivos ou layouts mudarem
-  useEffect(() => {
-    if (isMounted) {
-      localStorage.setItem('smarthome_devices', JSON.stringify(devices));
-      localStorage.setItem('smarthome_layouts_v3', JSON.stringify(layouts));
-      localStorage.setItem('smarthome_locations', JSON.stringify(locations));
-    }
-  }, [devices, layouts, locations, isMounted]);
 
   /////////////////////////////////////////////////////////////////////////////////////////////////////////
   //
@@ -249,7 +272,15 @@ export default function DashboardPage() {
     }
   };
 
-  // Lógica para Salvar (Adicionar ou Editar)
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////
+  //
+  //       Nome: handleSaveDevice
+  //  Descricao: Cria ou atualiza um dispositivo e persiste os dados no Firestore
+  //
+  //    Criacao: 26/04/2026  Clecio Santos [SHC-4]
+  // Modificado: 
+  //
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////
   const handleSaveDevice = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
@@ -259,8 +290,12 @@ export default function DashboardPage() {
     const locationId = formData.get('location') as string;
     const location = locations.find(l => l.id === locationId);
 
+    let updatedDevices = [];
+    let updatedLayouts = { ...layouts };
+
     if (editingDevice) {
-      setDevices(devices.map(d => d.id === editingDevice.id ? { ...d, name, location } : d));
+      updatedDevices = devices.map(d => d.id === editingDevice.id ? { ...d, name, location } : d);
+      setDevices(updatedDevices);
     } else {
       const newId = deviceId || `dev-${Date.now()}`;
 
@@ -277,11 +312,11 @@ export default function DashboardPage() {
         controlCode: controlCode || 'switch_1',
         characteristics: [{ name: 'Status', state: false }]
       };
-      setDevices([...devices, newDevice]);
+      updatedDevices = [...devices, newDevice];
+      setDevices(updatedDevices);
       
       // Adiciona o novo card a TODOS os breakpoints registrados para garantir o tamanho 2x3 em qualquer tela
-      setLayouts((prev: any) => {
-        const updatedLayouts = { ...prev };
+      setLayouts((prev: Layouts) => {
         const breakpoints = Object.keys(updatedLayouts);
         breakpoints.forEach((bp) => {
           updatedLayouts[bp] = [
@@ -298,6 +333,8 @@ export default function DashboardPage() {
         return updatedLayouts;
       });
     }
+
+    saveDataToFirestore(updatedDevices, updatedLayouts, locations);
     closeModal();
   };
 
@@ -316,15 +353,16 @@ export default function DashboardPage() {
     const name = formData.get('locName') as string;
     const color = formData.get('locColor') as string;
 
+    let newLocs = [];
     if (editingLocation) {
-      const updated = locations.map(l => l.id === editingLocation.id ? { ...l, name, color } : l);
-      setLocations(updated);
-      // Atualiza dispositivos existentes com os novos dados do ambiente
-      setDevices(devices.map(d => d.location?.id === editingLocation.id ? { ...d, location: { id: editingLocation.id, name, color } } : d));
+      newLocs = locations.map(l => l.id === editingLocation.id ? { ...l, name, color } : l);
+      setLocations(newLocs);
       setEditingLocation(null);
     } else {
-      setLocations([...locations, { id: `loc-${Date.now()}`, name, color }]);
+      newLocs = [...locations, { id: `loc-${Date.now()}`, name, color }];
+      setLocations(newLocs);
     }
+    saveDataToFirestore(devices, layouts, newLocs);
     e.currentTarget.reset();
   };
 
@@ -339,9 +377,11 @@ export default function DashboardPage() {
   /////////////////////////////////////////////////////////////////////////////////////////////////////////
   const removeLocation = (id: string) => {
     if (confirm('Tem certeza que deseja remover este ambiente? Dispositivos vinculados ficarão sem localização.')) {
-      setLocations(locations.filter(l => l.id !== id));
-      // Remove a referência de localização dos dispositivos
-      setDevices(devices.map(d => d.location?.id === id ? { ...d, location: undefined } : d));
+      const newLocs = locations.filter(l => l.id !== id);
+      const newDevs = devices.map(d => d.location?.id === id ? { ...d, location: undefined } : d);
+      setLocations(newLocs);
+      setDevices(newDevs);
+      saveDataToFirestore(newDevs, layouts, newLocs);
       if (editingLocation?.id === id) setEditingLocation(null);
     }
   };
@@ -370,14 +410,14 @@ export default function DashboardPage() {
   //
   /////////////////////////////////////////////////////////////////////////////////////////////////////////
   const removeDevice = (id: string) => {
-    setDevices(devices.filter(d => d.id !== id));
-    setLayouts((prev: any) => {
-      const updatedLayouts = { ...prev };
-      Object.keys(updatedLayouts).forEach(key => {
-        updatedLayouts[key] = updatedLayouts[key].filter((l: any) => l.i !== id);
-      });
-      return updatedLayouts;
+    const newDevs = devices.filter(d => d.id !== id);
+    const updatedLayouts = { ...layouts };
+    Object.keys(updatedLayouts).forEach(key => {
+      updatedLayouts[key] = updatedLayouts[key].filter((l: LayoutItem) => l.i !== id);
     });
+    setDevices(newDevs);
+    setLayouts(updatedLayouts);
+    saveDataToFirestore(newDevs, updatedLayouts, locations);
   };
 async function updateDevice(value: boolean, deviceId: string, code: string) {
     try {
@@ -574,7 +614,7 @@ const togglePower = async (deviceId: string) => {
                 <div className="relative">
                   <input 
                     name="deviceId"
-                    id="deviceIdInput"
+                    ref={deviceIdInputRef}
                     type="text" 
                     required
                     disabled={!!editingDevice}
