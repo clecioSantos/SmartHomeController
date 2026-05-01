@@ -8,8 +8,8 @@ const ResponsiveGridLayout = dynamic(
   { ssr: false }
 );
 import { Layouts, Layout, LayoutItem } from 'react-grid-layout';
-import { db } from "@/lib/firebase";
-import { doc, getDoc, setDoc } from 'firebase/firestore'; 
+import { db } from '../../lib/firebase';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { 
   Plus, 
   Trash2, 
@@ -20,17 +20,20 @@ import {
   Check,
   Settings2,
   Palette,
-  ChevronRight,
-  Search
+  ChevronRight, // Mantido para compatibilidade, embora não usado diretamente no dashboard atual
+  Search,
+  PlusCircle // Adicionado para o botão de adicionar funções
 } from 'lucide-react';
 
 // Estilos obrigatórios para o grid
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 
+
 interface Characteristic {
   name: string;
   state: string | boolean | number;
+  code?: string;
 }
 
 interface Location {
@@ -51,79 +54,59 @@ export default function DashboardPage() {
   // Hook para gerenciar a largura do container manualmente
   const containerRef = useRef<HTMLDivElement>(null);
   const deviceIdInputRef = useRef<HTMLInputElement>(null);
-  const [width, setWidth] = useState(1200);
-  
-  // Estado para evitar erros de hidratação no Next.js
+  const [width] = useState(1200);
   const [isMounted, setIsMounted] = useState(false);
-
-  /////////////////////////////////////////////////////////////////////////////////////////////////////////
-  //
-  //       Nome: useEffect_ResizeObserver
-  //  Descricao: Monitora o ajuste de tamanho do container para atualizar o grid
-  //
-  //    Criacao: 26/04/2026  Clecio Santos [SHC-4]
-  // Modificado: 
-  //
-  /////////////////////////////////////////////////////////////////////////////////////////////////////////
-  useEffect(() => {
-    if (!containerRef.current) return;
-
-    const observer = new ResizeObserver((entries) => {
-      setWidth(entries[0].contentRect.width);
-    });
-
-    observer.observe(containerRef.current);
-    return () => observer.disconnect();
-  }, []);
 
   const [locations, setLocations] = useState<Location[]>([
     { id: '1', name: 'Sala de Estar', color: '#6366f1' },
-    { id: '2', name: 'Cozinha', color: '#f59e0b' },
-    { id: '3', name: 'Quarto', color: '#10b981' },
+    { id: '2', name: 'Cozinha', color: '#10b981' },
+    { id: '3', name: 'Quarto', color: '#f59e0b' },
   ]);
-
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [editingLocation, setEditingLocation] = useState<Location | null>(null);
 
   const [devices, setDevices] = useState<Device[]>([
     {
       id: 'dev-1',
       name: 'Iluminação Teto',
-      location: { id: '1', name: 'Sala de Estar' },
-      characteristics: [{ name: 'Status', state: true }, { name: 'Brilho', state: '75%' }]
+      location: { id: '1', name: 'Sala de Estar', color: '#6366f1' },
+      characteristics: [{ name: 'Status', state: true, code: 'switch_1' }]
     },
     {
       id: 'dev-2',
       name: 'Ar Condicionado',
-      location: { id: '3', name: 'Quarto', color: '#10b981' },
-      characteristics: [{ name: 'Temperatura', state: '22°C' }, { name: 'Modo', state: 'Eco' }]
+      location: { id: '3', name: 'Quarto', color: '#f59e0b' },
+      characteristics: [{ name: 'Status', state: false, code: 'switch_1' }]
     }
   ]);
+
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [editingLocation, setEditingLocation] = useState<Location | null>(null);
 
   // Gerenciamos o objeto 'layouts' completo para persistir posições em todos os breakpoints
   const [layouts, setLayouts] = useState<Layouts>({
     lg: [
       { i: 'dev-1', x: 0, y: 0, w: 2, h: 3, minW: 2, minH: 3 },
       { i: 'dev-2', x: 2, y: 0, w: 2, h: 3, minW: 2, minH: 3 },
-    ]
+    ],
+    md: [],
+    sm: [],
+    xs: [],
+    xxs: []
   });
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingDevice, setEditingDevice] = useState<Device | null>(null);
-
-  // Estados para busca de funcionalidades (features)
   const [availableCodes, setAvailableCodes] = useState<string[]>([]);
   const [isLoadingFeatures, setIsLoadingFeatures] = useState(false);
+  const [tempCharacteristics, setTempCharacteristics] = useState<Characteristic[]>([]);
 
   /////////////////////////////////////////////////////////////////////////////////////////////////////////
   //
   //       Nome: useEffect_FirestoreLoader
-  //  Descricao: Carrega as configuracoes do Cloud Firestore ao iniciar a aplicacao para persistencia remota
+  //  Descricao: Carrega dados salvos no navegador ao iniciar a aplicacao para garantir persistencia
   //
   //    Criacao: 26/04/2026  Clecio Santos [SHC-4]
-  // Modificado: 26/04/2026  Clecio Santos [SHC-4] - Adicionado try catch para evitar trava de hidratacao
-  //
-  /////////////////////////////////////////////////////////////////////////////////////////////////////////
+  // Modificado: 
+  //////////////////////////////////////////////////////////////////////////////////////////////////
   // CARREGAR DADOS: Executa apenas uma vez ao montar o componente
   useEffect(() => {
     const loadRemoteData = async () => {
@@ -137,12 +120,8 @@ export default function DashboardPage() {
           if (data.layouts) setLayouts(data.layouts);
           if (data.locations) setLocations(data.locations);
         }
-      } catch (error: any) {
-        console.error("Erro completo:", error);
-        console.error("Mensagem:", error?.message);
-        console.error("Código:", error?.code);
-        console.log(db);
-
+      } catch (error) {
+        console.error("Erro ao carregar dados do Firestore:", error);
       } finally {
         setIsMounted(true);
       }
@@ -154,7 +133,7 @@ export default function DashboardPage() {
   /////////////////////////////////////////////////////////////////////////////////////////////////////////
   //
   //       Nome: saveDataToFirestore
-  //  Descricao: Envia o estado atual do dashboard para persistencia remota na nuvem
+  //  Descricao: Persiste as configuracoes de dispositivos, layouts e locais no Cloud Firestore
   //
   //    Criacao: 26/04/2026  Clecio Santos [SHC-4]
   // Modificado: 
@@ -163,12 +142,17 @@ export default function DashboardPage() {
   const saveDataToFirestore = async (newDevices: Device[], newLayouts: Layouts, newLocations: Location[]) => {
     if (!isMounted) return;
     try {
-      await setDoc(doc(db, "smarthomeController", "dashboard_config"), {
+      // JSON.parse(JSON.stringify(...)) remove valores 'undefined' que o Firestore não aceita.
+      // Isso resolve o erro "Unsupported field value: undefined".
+      const payload = JSON.parse(JSON.stringify({
         devices: newDevices,
         layouts: newLayouts,
         locations: newLocations,
         updatedAt: Date.now()
-      });
+      }));
+      console.log("[Firestore] Tentando salvar configuração:", payload);
+
+      await setDoc(doc(db, "smarthomeController", "dashboard_config"), payload);
     } catch (error) {
       console.error("Erro ao salvar no Firestore:", error);
     }
@@ -177,7 +161,7 @@ export default function DashboardPage() {
   /////////////////////////////////////////////////////////////////////////////////////////////////////////
   //
   //       Nome: refreshDevicesStatus
-  //  Descricao: Sincroniza o status dos dispositivos com a API da Tuya sem persistir no banco
+  //  Descricao: Sincroniza o estado real de todas as funcoes dos dispositivos via API Tuya
   //
   //    Criacao: 26/04/2026  Clecio Santos [SHC-4]
   // Modificado: 
@@ -188,7 +172,6 @@ export default function DashboardPage() {
 
     try {
       const updatedDevices = await Promise.all(devices.map(async (device) => {
-        // Se nao for um dispositivo real (ID gerado por timestamp), ignora a busca
         if (device.id.startsWith('dev-')) return device;
 
         try {
@@ -197,37 +180,34 @@ export default function DashboardPage() {
 
           if (data.success && data.deviceStatus?.result) {
             const statusResult = data.deviceStatus.result;
-            const targetCode = device.controlCode || 'switch_1';
-            
-            // Procura o valor atual da feature vinculada ao botao
-            const remoteStatus = statusResult.find((r: any) => r.code === targetCode);
 
-            if (remoteStatus !== undefined) {
-              const newCharacteristics = device.characteristics.map(char => {
-                if (char.name === "Status") {
-                  return { ...char, state: remoteStatus.value };
-                }
-                return char;
-              });
-              return { ...device, characteristics: newCharacteristics };
-            }
+            const newCharacteristics = device.characteristics.map(char => {
+              const remoteMatch = statusResult.find((r: any) => r.code === char.code);
+              // Garante que não injetamos 'undefined' no estado local vindo da API
+              if (remoteMatch?.value !== undefined) {
+                return { ...char, state: remoteMatch.value };
+              }
+              return char;
+            });
+
+            return { ...device, characteristics: newCharacteristics };
           }
         } catch (err) {
-          console.error("Erro ao sincronizar dispositivo individual:", device.id, err);
+          console.error("Erro sincronizando device:", device.id, err);
         }
         return device;
       }));
 
       setDevices(updatedDevices);
     } catch (error) {
-      console.error("Erro na rotina de atualizacao global:", error);
+      console.error("Erro polling global:", error);
     }
   };
 
   /////////////////////////////////////////////////////////////////////////////////////////////////////////
   //
   //       Nome: useEffect_Polling
-  //  Descricao: Gerencia o intervalo de atualizacao automatica a cada 2 segundos
+  //  Descricao: Gerencia a atualizacao automatica a cada 2 segundos
   //
   //    Criacao: 26/04/2026  Clecio Santos [SHC-4]
   // Modificado: 
@@ -246,7 +226,7 @@ export default function DashboardPage() {
   /////////////////////////////////////////////////////////////////////////////////////////////////////////
   //
   //       Nome: fetchDeviceFeatures
-  //  Descricao: Busca os codigos de estado de um dispositivo via API da Tuya usando Refs de input
+  //  Descricao: Busca os codigos de comando disponiveis no hardware via API
   //
   //    Criacao: 26/04/2026  Clecio Santos [SHC-4]
   // Modificado: 
@@ -260,7 +240,9 @@ export default function DashboardPage() {
       const res = await fetch(`/api/tuya/status?deviceId=${id}`);
       const data = await res.json();
       if (data.success && data.deviceStatus?.result) {
-        const codes = data.deviceStatus.result.map((item: any) => item.code);
+        const codes = data.deviceStatus.result
+          .map((item: any) => item.code as string)
+          .filter((c: any) => c !== undefined && c !== null); // Filtra códigos inválidos
         setAvailableCodes(codes);
       } else {
         setAvailableCodes([]);
@@ -275,7 +257,7 @@ export default function DashboardPage() {
   /////////////////////////////////////////////////////////////////////////////////////////////////////////
   //
   //       Nome: handleSaveDevice
-  //  Descricao: Cria ou atualiza um dispositivo e persiste os dados no Firestore
+  //  Descricao: Cria ou edita um dispositivo com N funcoes e persiste no Firestore
   //
   //    Criacao: 26/04/2026  Clecio Santos [SHC-4]
   // Modificado: 
@@ -286,16 +268,21 @@ export default function DashboardPage() {
     const formData = new FormData(e.currentTarget);
     const name = formData.get('name') as string;
     const deviceId = formData.get('deviceId') as string;
-    const controlCode = formData.get('controlCode') as string;
     const locationId = formData.get('location') as string;
     const location = locations.find(l => l.id === locationId);
 
     let updatedDevices = [];
-    let updatedLayouts = { ...layouts };
+    let finalDevices: Device[];
+    let finalLayouts: Layouts;
 
     if (editingDevice) {
-      updatedDevices = devices.map(d => d.id === editingDevice.id ? { ...d, name, location } : d);
-      setDevices(updatedDevices);
+      finalDevices = devices.map(d => d.id === editingDevice.id ? {
+        ...d, 
+        name, 
+        location: location || null, // Firestore não aceita undefined, use null
+        characteristics: tempCharacteristics 
+      } : d);
+      finalLayouts = { ...layouts }; // Layouts não mudam ao editar detalhes do dispositivo
     } else {
       const newId = deviceId || `dev-${Date.now()}`;
 
@@ -304,37 +291,35 @@ export default function DashboardPage() {
         alert("Erro: Já existe um dispositivo com este ID cadastrado.");
         return;
       }
-
       const newDevice: Device = {
         id: newId,
         name,
-        location,
-        controlCode: controlCode || 'switch_1',
-        characteristics: [{ name: 'Status', state: false }]
+        location: location || null, // Firestore não aceita undefined, use null
+        characteristics: tempCharacteristics
       };
-      updatedDevices = [...devices, newDevice];
-      setDevices(updatedDevices);
-      
-      // Adiciona o novo card a TODOS os breakpoints registrados para garantir o tamanho 2x3 em qualquer tela
-      setLayouts((prev: Layouts) => {
-        const breakpoints = Object.keys(updatedLayouts);
-        breakpoints.forEach((bp) => {
-          updatedLayouts[bp] = [
-            ...(updatedLayouts[bp] || []), 
-            { 
-              i: newId, 
-              x: 0, 
-              y: Infinity, 
-              w: 2, h: 3, 
-              minW: 2, minH: 3 
-            }
-          ];
-        });
-        return updatedLayouts;
+      finalDevices = [...devices, newDevice];
+
+      const newLayoutsForNewDevice: Layouts = {};
+      // Correção da lógica de layout e remoção do Infinity (não suportado pelo Firestore)
+      const availableBreakpoints = ['lg', 'md', 'sm', 'xs', 'xxs'];
+      const columnCounts: { [key: string]: number } = { lg: 10, md: 8, sm: 6, xs: 4, xxs: 2 };
+
+      availableBreakpoints.forEach((bp) => {
+        const existingLayout = layouts[bp] || [];
+        const nextX = (existingLayout.length * 2) % (columnCounts[bp] || 2);
+        newLayoutsForNewDevice[bp] = [
+          ...existingLayout, 
+          { i: newId, x: nextX, y: 99, w: 2, h: 3, minW: 2, minH: 3 }
+        ];
       });
+      finalLayouts = newLayoutsForNewDevice;
     }
 
-    saveDataToFirestore(updatedDevices, updatedLayouts, locations);
+    // Atualiza o estado local primeiro
+    setDevices(finalDevices);
+    setLayouts(finalLayouts); // Garante que os layouts sejam atualizados para novos dispositivos
+    // Em seguida, persiste no Firestore
+    saveDataToFirestore(finalDevices, finalLayouts, locations);
     closeModal();
   };
 
@@ -353,16 +338,15 @@ export default function DashboardPage() {
     const name = formData.get('locName') as string;
     const color = formData.get('locColor') as string;
 
-    let newLocs = [];
     if (editingLocation) {
-      newLocs = locations.map(l => l.id === editingLocation.id ? { ...l, name, color } : l);
-      setLocations(newLocs);
+      const updated = locations.map(l => l.id === editingLocation.id ? { ...l, name, color } : l);
+      setLocations(updated);
+      // Atualiza dispositivos existentes com os novos dados do ambiente
+      setDevices(devices.map(d => d.location?.id === editingLocation.id ? { ...d, location: { id: editingLocation.id, name, color } } : d));
       setEditingLocation(null);
     } else {
-      newLocs = [...locations, { id: `loc-${Date.now()}`, name, color }];
-      setLocations(newLocs);
+      setLocations([...locations, { id: `loc-${Date.now()}`, name, color }]);
     }
-    saveDataToFirestore(devices, layouts, newLocs);
     e.currentTarget.reset();
   };
 
@@ -377,11 +361,9 @@ export default function DashboardPage() {
   /////////////////////////////////////////////////////////////////////////////////////////////////////////
   const removeLocation = (id: string) => {
     if (confirm('Tem certeza que deseja remover este ambiente? Dispositivos vinculados ficarão sem localização.')) {
-      const newLocs = locations.filter(l => l.id !== id);
-      const newDevs = devices.map(d => d.location?.id === id ? { ...d, location: undefined } : d);
-      setLocations(newLocs);
-      setDevices(newDevs);
-      saveDataToFirestore(newDevs, layouts, newLocs);
+      setLocations(locations.filter(l => l.id !== id));
+      // Remove a referência de localização dos dispositivos, usando null para Firestore
+      setDevices(devices.map(d => d.location?.id === id ? { ...d, location: null } : d));
       if (editingLocation?.id === id) setEditingLocation(null);
     }
   };
@@ -409,19 +391,33 @@ export default function DashboardPage() {
   // Modificado: 
   //
   /////////////////////////////////////////////////////////////////////////////////////////////////////////
-  const removeDevice = (id: string) => {
-    const newDevs = devices.filter(d => d.id !== id);
-    const updatedLayouts = { ...layouts };
-    Object.keys(updatedLayouts).forEach(key => {
-      updatedLayouts[key] = updatedLayouts[key].filter((l: LayoutItem) => l.i !== id);
+  const removeDevice = async (id: string) => {
+    const updatedDevices = devices.filter(d => d.id !== id);
+    setDevices(updatedDevices);
+    setLayouts((prev: Layouts) => {
+      const updatedLayouts = { ...prev };
+      const breakpoints = Object.keys(updatedLayouts);
+      breakpoints.forEach(key => {
+        updatedLayouts[key] = updatedLayouts[key].filter((l: Layout) => l.i !== id);
+      });
+      saveDataToFirestore(updatedDevices, updatedLayouts, locations); // Salva as alterações de layout após a remoção
+      return updatedLayouts;
     });
-    setDevices(newDevs);
-    setLayouts(updatedLayouts);
-    saveDataToFirestore(newDevs, updatedLayouts, locations);
   };
-async function updateDevice(value: boolean, deviceId: string, code: string) {
+
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////
+  //
+  //       Nome: updateDevice
+  //  Descricao: Envia comandos de estado para a API da Tuya para controle de hardware
+  //
+  //    Criacao: 26/04/2026  Clecio Santos [SHC-4]
+  // Modificado: 
+  //
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////
+  async function updateDevice(value: boolean, deviceId: string, code: string) {
+    console.log(`[Tuya API] Enviando comando: Dispositivo=${deviceId}, Função=${code}, Valor=${value}`);
     try {
-      await fetch("/api/tuya/status", {
+      const res = await fetch("/api/tuya/status", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -432,36 +428,33 @@ async function updateDevice(value: boolean, deviceId: string, code: string) {
             code: code
          }),
       });
-
+      const data = await res.json();
+      console.log(`[Tuya API] Resposta recebida:`, data);
     } catch (error) {
-      console.error(error);
+      console.error(`[Tuya API] Erro na requisição:`, error);
     }
   }
 
   /////////////////////////////////////////////////////////////////////////////////////////////////////////
   //
   //       Nome: togglePower
-  //  Descricao: Alterna o estado de energia local e dispara o comando remoto via Tuya
+  //  Descricao: Alterna o estado de uma funcao especifica e sincroniza via nuvem
   //
   //    Criacao: 26/04/2026  Clecio Santos [SHC-4]
   // Modificado: 
   //
   /////////////////////////////////////////////////////////////////////////////////////////////////////////
-const togglePower = async (deviceId: string) => {
-  let newState = false;
-  let targetCode = "switch_1";
+const togglePower = async (deviceId: string, featureCode: string) => {
+  let newState: any = false;
 
   const updatedDevices = devices.map(device => {
     if (device.id !== deviceId) {
       return device;
     }
 
-    targetCode = device.controlCode || "switch_1";
-
     const updatedCharacteristics = device.characteristics.map(characteristic => {
-      if (characteristic.name === "Status") {
+      if (characteristic.code === featureCode) {
         newState = !characteristic.state;
-
         return {
           ...characteristic,
           state: newState,
@@ -477,10 +470,11 @@ const togglePower = async (deviceId: string) => {
     };
   });
 
+  console.log(`[Dashboard] Clique em função: Device=${deviceId}, Code=${featureCode}, NovoEstado=${newState}`);
   setDevices(updatedDevices);
 
   // chama a API depois
-  await updateDevice(newState, deviceId, targetCode);
+  await updateDevice(newState, deviceId, featureCode);
 };
 
   
@@ -489,11 +483,11 @@ const togglePower = async (deviceId: string) => {
   if (!isMounted) return <div className="min-h-screen bg-slate-950" />;
 
   return (
-    <div className="p-6 lg:p-10 max-w-[1600px] mx-auto">
-      <header className="flex justify-between items-end mb-10">
-        <div>
+    <div className="w-full min-h-screen bg-slate-950 overflow-x-hidden relative flex flex-col">
+      {/* Header Fixo no topo ocupando a largura total */}
+      <header className="sticky top-0 w-full px-6 py-6 flex justify-between items-center z-40 bg-slate-950/80 backdrop-blur-md border-b border-white/5">
+        <div className="flex flex-col">
           <h2 className="text-2xl font-bold text-white tracking-tight">SmartHome Control</h2>
-          <p className="text-slate-400 text-sm">Organize e controle seus aparelhos</p>
         </div>
         <div className="flex gap-3">
           <button 
@@ -504,7 +498,11 @@ const togglePower = async (deviceId: string) => {
             <Settings2 size={20} />
           </button>
           <button 
-            onClick={() => setIsModalOpen(true)}
+            onClick={() => {
+              setEditingDevice(null);
+              setTempCharacteristics([]);
+              setIsModalOpen(true);
+            }}
             className="bg-indigo-600 hover:bg-indigo-500 text-white p-3 rounded-2xl transition-transform active:scale-95 shadow-lg shadow-indigo-500/20"
           >
             <Plus size={20} />
@@ -512,19 +510,22 @@ const togglePower = async (deviceId: string) => {
         </div>
       </header>
 
-      <div ref={containerRef} className="w-full">
+      <div ref={containerRef} className="flex-1 w-full pb-10 mx-auto" style={{ width: '1200px' }}>
         <ResponsiveGridLayout
         className="layout"
           layouts={layouts}
         breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
         cols={{ lg: 10, md: 8, sm: 6, xs: 4, xxs: 2 }}
         rowHeight={100}
-          width={width} // Passamos a largura obtida pelo Hook
+          width={width}
         draggableHandle=".grid-drag-handle"
-        compactType={null} 
-        preventCollision={false} // Melhora a sensação de liberdade ao arrastar
-          onLayoutChange={(currentLayout, allLayouts) => setLayouts(allLayouts)}
-        margin={[20, 20]}
+        compactType="vertical"
+        preventCollision={false}
+        onLayoutChange={(currentLayout, allLayouts) => {
+          setLayouts(allLayouts);
+          saveDataToFirestore(devices, allLayouts, locations); // Salva as alterações de layout
+        }}
+        margin={[12, 12]}
       >
         {devices.map((device) => {
           const isOn = device.characteristics.find(c => c.name === 'Status')?.state === true;
@@ -534,30 +535,25 @@ const togglePower = async (deviceId: string) => {
             <div 
               key={device.id} 
               style={{ borderColor: isOn ? themeColor : '#1e293b' }}
-              className={`rounded-3xl border-2 transition-all duration-300 flex flex-col overflow-hidden shadow-2xl ${isOn ? 'bg-slate-900 ring-1 ring-white/5' : 'bg-slate-900/80 border-slate-800'}`}
+              className={`rounded-3xl border-2 transition-colors duration-300 flex flex-col overflow-hidden shadow-2xl ${isOn ? 'bg-slate-900 ring-1 ring-white/5' : 'bg-slate-900/80 border-slate-800'}`}
             >
-              {/* Handle de Arrasto */}
               <div className="grid-drag-handle p-4 pb-0 flex justify-between items-start cursor-grab active:cursor-grabbing">
                 <div className="bg-slate-800 p-2 rounded-xl text-slate-400">
                   <LayoutIcon size={18} />
                 </div>
                 <div className="flex gap-1">
                   <button 
-                    onClick={() => { setEditingDevice(device); setIsModalOpen(true); }}
+                    onClick={() => { setEditingDevice(device); setTempCharacteristics(device.characteristics); setIsModalOpen(true); }}
                     className="p-2 text-slate-500 hover:text-white transition-colors"
                   >
                     <Edit3 size={16} />
                   </button>
-                  <button 
-                    onClick={() => removeDevice(device.id)}
-                    className="p-2 text-slate-500 hover:text-red-400 transition-colors"
-                  >
+                  <button onClick={() => removeDevice(device.id)} className="p-2 text-slate-500 hover:text-red-400 transition-colors">
                     <Trash2 size={16} />
                   </button>
                 </div>
               </div>
-
-              {/* Conteúdo */}
+ 
               <div className="p-5 flex-1 flex flex-col">
                 <div className="mb-4">
                   <h3 className="font-bold text-white leading-tight truncate">{device.name}</h3>
@@ -566,24 +562,25 @@ const togglePower = async (deviceId: string) => {
                   </span>
                 </div>
 
-                <div className="mt-auto flex items-center justify-between">
-                  <div className="flex flex-col">
-                    {device.characteristics.filter(c => typeof c.state !== 'boolean').slice(0, 1).map((c, i) => (
-                      <span key={i} className="text-indigo-400 font-mono text-sm">{c.state}</span>
-                    ))}
-                  </div>
-                  
-                  <button 
-                    onClick={() => togglePower(device.id)}
-                    style={{ backgroundColor: isOn ? themeColor : '' }}
-                    className={`p-3 rounded-2xl transition-all ${
-                      isOn 
-                        ? 'text-white shadow-lg' 
-                        : 'bg-slate-800 text-slate-500 hover:bg-slate-700'
-                    }`}
-                  >
-                    <Power size={20} />
-                  </button>
+                <div className="mt-auto space-y-2">
+                  {device.characteristics.map((char, idx) => (
+                    <div key={idx} className="flex items-center justify-between bg-slate-950/40 p-2 rounded-xl border border-white/5">
+                      <span className="text-xs text-slate-400 truncate mr-2">{char.name}</span>
+                      {typeof char.state === 'boolean' ? (
+                        <button 
+                          onClick={() => togglePower(device.id, char.code)}
+                          style={{ backgroundColor: char.state ? themeColor : '' }}
+                          className={`p-2 rounded-lg transition-all ${
+                            char.state ? 'text-white shadow-md' : 'bg-slate-800 text-slate-500 hover:text-white'
+                          }`}
+                        >
+                          <Power size={14} />
+                        </button>
+                      ) : (
+                        <span className="text-xs font-mono text-indigo-400">{char.state}</span>
+                      )}
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
@@ -634,23 +631,6 @@ const togglePower = async (deviceId: string) => {
                 </div>
               </div>
 
-              {availableCodes.length > 0 && (
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 px-1">
-                    Função de Liga/Desliga
-                  </label>
-                  <select 
-                    name="controlCode"
-                    defaultValue={editingDevice?.controlCode}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-5 py-4 focus:ring-2 focus:ring-indigo-500 outline-none appearance-none text-white"
-                  >
-                    {availableCodes.map(code => (
-                      <option key={code} value={code}>{code}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 px-1">
                   Nome do Aparelho
@@ -679,6 +659,62 @@ const togglePower = async (deviceId: string) => {
                     <option key={loc.id} value={loc.id}>{loc.name}</option>
                   ))}
                 </select>
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex justify-between items-center px-1">
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest">
+                    Funcoes (N)
+                  </label>
+                  {availableCodes.length > 0 && (
+                    <button 
+                      type="button"
+                      onClick={() => setTempCharacteristics([...tempCharacteristics, { name: 'Nova Funcao', code: availableCodes[0] || '', state: false }])}
+                      className="text-indigo-400 hover:text-indigo-300 text-xs font-bold flex items-center gap-1"
+                    >
+                      <PlusCircle size={14} /> Add
+                    </button>
+                  )}
+                </div>
+
+                <div className="max-h-48 overflow-y-auto space-y-3 pr-2 custom-scrollbar">
+                  {tempCharacteristics.map((char, idx) => (
+                    <div key={idx} className="bg-slate-950/50 p-3 rounded-2xl border border-slate-800 space-y-3">
+                      <div className="flex gap-2">
+                        <input 
+                          placeholder="Nome da Funcao"
+                          value={char.name}
+                          onChange={(e) => {
+                            const updated = [...tempCharacteristics];
+                            updated[idx].name = e.target.value;
+                            setTempCharacteristics(updated);
+                          }}
+                          className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-1 text-sm outline-none focus:ring-1 focus:ring-indigo-500"
+                        />
+                        <button type="button" onClick={() => setTempCharacteristics(tempCharacteristics.filter((_, i) => i !== idx))} className="text-slate-600 hover:text-red-400">
+                          <X size={16} />
+                        </button>
+                      </div>
+                      <div className="flex gap-2 items-center">
+                        <select 
+                          value={char.code}
+                          onChange={(e) => {
+                            const updated = [...tempCharacteristics];
+                            updated[idx].code = e.target.value;
+                            setTempCharacteristics(updated);
+                          }}
+                          className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-1 text-xs outline-none"
+                        >
+                          {availableCodes.map(c => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                        <span className="text-[10px] text-slate-500 font-bold uppercase">Vinculo Tuya</span>
+                      </div>
+                    </div>
+                  ))}
+                  {availableCodes.length === 0 && !isLoadingFeatures && (
+                    <p className="text-[10px] text-slate-600 text-center italic">Busque o DeviceID para listar as funcoes.</p>
+                  )}
+                </div>
               </div>
 
               <button 
