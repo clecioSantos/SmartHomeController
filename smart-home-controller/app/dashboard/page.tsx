@@ -271,7 +271,6 @@ export default function DashboardPage() {
     const locationId = formData.get('location') as string;
     const location = locations.find(l => l.id === locationId);
 
-    let updatedDevices = [];
     let finalDevices: Device[];
     let finalLayouts: Layouts;
 
@@ -452,13 +451,10 @@ const togglePower = async (deviceId: string, featureCode: string) => {
       return device;
     }
 
-    const updatedCharacteristics = device.characteristics.map(characteristic => {
+    const characteristics = device.characteristics.map(characteristic => {
       if (characteristic.code === featureCode) {
         newState = !characteristic.state;
-        return {
-          ...characteristic,
-          state: newState,
-        };
+        return { ...characteristic, state: newState };
       }
 
       return characteristic;
@@ -466,7 +462,7 @@ const togglePower = async (deviceId: string, featureCode: string) => {
 
     return {
       ...device,
-      characteristics: updatedCharacteristics,
+      characteristics,
     };
   });
 
@@ -480,22 +476,23 @@ const togglePower = async (deviceId: string, featureCode: string) => {
   
 
   // Não renderiza nada até que o cliente esteja montado para evitar Hydration Mismatch
-  if (!isMounted) return <div className="min-h-screen bg-slate-950" />;
+  if (!isMounted) return <div className="min-h-screen bg-[#050505]" />;
 
   return (
-    <div className="w-full min-h-screen bg-slate-950 overflow-x-hidden relative flex flex-col">
+    <div className="w-full min-h-screen bg-[#050505] text-white overflow-x-hidden relative flex flex-col font-sans">
       {/* Header Fixo no topo ocupando a largura total */}
-      <header className="sticky top-0 w-full px-6 py-6 flex justify-between items-center z-40 bg-slate-950/80 backdrop-blur-md border-b border-white/5">
+      <header className="sticky top-0 w-full px-10 py-5 flex justify-between items-center z-40 bg-[#0a0a0a]/80 backdrop-blur-md border-b border-[#222222]">
         <div className="flex flex-col">
-          <h2 className="text-2xl font-bold text-white tracking-tight">SmartHome Control</h2>
+          <h2 className="text-xl font-black italic text-white tracking-tighter uppercase">SmartHome <span className="text-[#004b93]">Control</span></h2>
         </div>
         <div className="flex gap-3">
           <button 
             onClick={() => setIsSidebarOpen(true)}
-            className="bg-slate-800 hover:bg-slate-700 text-white p-3 rounded-2xl transition-all active:scale-95 border border-slate-700"
+            className="text-[#888888] hover:text-white p-2 transition-colors flex items-center gap-2 font-bold uppercase text-xs tracking-widest"
             title="Gerenciar Ambientes"
           >
-            <Settings2 size={20} />
+            <Settings2 size={18} />
+            <span className="hidden sm:inline">Ambientes</span>
           </button>
           <button 
             onClick={() => {
@@ -503,14 +500,15 @@ const togglePower = async (deviceId: string, featureCode: string) => {
               setTempCharacteristics([]);
               setIsModalOpen(true);
             }}
-            className="bg-indigo-600 hover:bg-indigo-500 text-white p-3 rounded-2xl transition-transform active:scale-95 shadow-lg shadow-indigo-500/20"
+            className="bg-[#004b93] hover:bg-[#005bb5] text-white px-6 py-2 rounded-none transition-all active:scale-95 font-bold uppercase text-xs tracking-[0.2em] border-b-2 border-white/20"
           >
-            <Plus size={20} />
+            <Plus size={16} />
+            <span>Adicionar</span>
           </button>
         </div>
       </header>
 
-      <div ref={containerRef} className="flex-1 w-full pb-10 mx-auto" style={{ width: '1200px' }}>
+      <div ref={containerRef} className="flex-1 w-full py-12 mx-auto" style={{ width: '1200px' }}>
         <ResponsiveGridLayout
         className="layout"
           layouts={layouts}
@@ -525,30 +523,30 @@ const togglePower = async (deviceId: string, featureCode: string) => {
           setLayouts(allLayouts);
           saveDataToFirestore(devices, allLayouts, locations); // Salva as alterações de layout
         }}
-        margin={[12, 12]}
+        margin={[30, 30]}
       >
         {devices.map((device) => {
           const isOn = device.characteristics.find(c => c.name === 'Status')?.state === true;
-          const themeColor = device.location?.color || '#334155'; // default slate-700
+          const themeColor = device.location?.color || '#004b93'; 
           
           return (
             <div 
               key={device.id} 
-              style={{ borderColor: isOn ? themeColor : '#1e293b' }}
-              className={`rounded-3xl border-2 transition-colors duration-300 flex flex-col overflow-hidden shadow-2xl ${isOn ? 'bg-slate-900 ring-1 ring-white/5' : 'bg-slate-900/80 border-slate-800'}`}
+              className={`bg-[#111111] border-l-4 rounded-sm flex flex-col overflow-hidden transition-all duration-500 shadow-2xl hover:translate-y-[-4px] ${isOn ? 'border-[#004b93]' : 'border-[#333333]'}`}
+              style={{ borderLeftColor: isOn ? themeColor : '#222222' }}
             >
-              <div className="grid-drag-handle p-4 pb-0 flex justify-between items-start cursor-grab active:cursor-grabbing">
-                <div className="bg-slate-800 p-2 rounded-xl text-slate-400">
-                  <LayoutIcon size={18} />
+              <div className="grid-drag-handle p-4 pb-0 flex justify-between items-start cursor-grab active:cursor-grabbing group">
+                <div className={`p-1.5 rounded-sm transition-colors ${isOn ? 'text-[#004b93]' : 'text-[#444444]'}`}>
+                  <LayoutIcon size={16} />
                 </div>
                 <div className="flex gap-1">
                   <button 
                     onClick={() => { setEditingDevice(device); setTempCharacteristics(device.characteristics); setIsModalOpen(true); }}
-                    className="p-2 text-slate-500 hover:text-white transition-colors"
+                    className="p-2 text-[#444444] hover:text-white transition-colors"
                   >
                     <Edit3 size={16} />
                   </button>
-                  <button onClick={() => removeDevice(device.id)} className="p-2 text-slate-500 hover:text-red-400 transition-colors">
+                  <button onClick={() => removeDevice(device.id)} className="p-2 text-[#444444] hover:text-[#e10600] transition-colors">
                     <Trash2 size={16} />
                   </button>
                 </div>
@@ -556,28 +554,29 @@ const togglePower = async (deviceId: string, featureCode: string) => {
  
               <div className="p-5 flex-1 flex flex-col">
                 <div className="mb-4">
-                  <h3 className="font-bold text-white leading-tight truncate">{device.name}</h3>
-                  <span style={{ color: themeColor }} className="text-[10px] uppercase tracking-widest font-black opacity-80">
-                    {device.location?.name || 'Geral'}
+                  <h3 className="text-md font-bold text-white uppercase tracking-wider truncate">{device.name}</h3>
+                  <span className="text-[9px] uppercase tracking-[0.2em] font-bold text-[#888888] block mt-1">
+                    {device.location?.name || 'Standard'}
                   </span>
                 </div>
 
-                <div className="mt-auto space-y-2">
+                <div className="mt-auto space-y-1.5">
                   {device.characteristics.map((char, idx) => (
-                    <div key={idx} className="flex items-center justify-between bg-slate-950/40 p-2 rounded-xl border border-white/5">
-                      <span className="text-xs text-slate-400 truncate mr-2">{char.name}</span>
+                    <div key={idx} className="flex items-center justify-between bg-[#0a0a0a] p-3 rounded-none border border-[#222222]">
+                      <span className="text-[10px] font-bold text-[#666666] uppercase tracking-widest truncate mr-2">{char.name}</span>
                       {typeof char.state === 'boolean' ? (
                         <button 
                           onClick={() => togglePower(device.id, char.code)}
-                          style={{ backgroundColor: char.state ? themeColor : '' }}
-                          className={`p-2 rounded-lg transition-all ${
-                            char.state ? 'text-white shadow-md' : 'bg-slate-800 text-slate-500 hover:text-white'
+                          className={`p-2 transition-all ${
+                            char.state 
+                              ? 'bg-[#004b93] text-white shadow-[0_0_15px_rgba(0,75,147,0.5)]' 
+                              : 'bg-[#1a1a1a] text-[#444444] hover:bg-[#222222]'
                           }`}
                         >
                           <Power size={14} />
                         </button>
                       ) : (
-                        <span className="text-xs font-mono text-indigo-400">{char.state}</span>
+                        <span className="text-xs font-mono font-bold text-[#004b93]">{char.state}</span>
                       )}
                     </div>
                   ))}
@@ -591,22 +590,22 @@ const togglePower = async (deviceId: string, featureCode: string) => {
 
       {/* Modal de Cadastro/Edição */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 w-full max-w-md rounded-[2.5rem] shadow-2xl p-8 relative overflow-hidden">
+        <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-[#111111] border border-[#222222] w-full max-w-md rounded-none shadow-2xl p-10 relative">
             <div className="absolute top-0 right-0 p-6">
-              <button onClick={closeModal} className="text-slate-500 hover:text-white">
-                <X size={24} />
+              <button onClick={closeModal} className="text-[#888888] hover:text-white transition-colors">
+                <X size={20} />
               </button>
             </div>
 
-            <h2 className="text-2xl font-bold mb-6">
-              {editingDevice ? 'Editar Dispositivo' : 'Novo Dispositivo'}
+            <h2 className="text-xl font-black uppercase tracking-[0.2em] text-white mb-8 border-l-4 border-[#004b93] pl-4">
+              {editingDevice ? 'Configurar' : 'Registrar'}
             </h2>
 
             <form className="space-y-6" onSubmit={handleSaveDevice}>
               <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 px-1">
-                  ID do Dispositivo (DeviceId)
+                <label className="block text-[10px] font-bold text-[#888888] uppercase tracking-widest mb-2">
+                  ID do Dispositivo
                 </label>
                 <div className="relative">
                   <input 
@@ -617,13 +616,13 @@ const togglePower = async (deviceId: string, featureCode: string) => {
                     disabled={!!editingDevice}
                     defaultValue={editingDevice?.id}
                     placeholder="Ex: tuya-id-12345" 
-                    className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-5 py-4 pr-14 focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-white disabled:opacity-50"
+                    className="w-full bg-[#0a0a0a] border border-[#222222] rounded-none px-4 py-3 pr-14 focus:border-[#004b93] outline-none transition-all text-white disabled:opacity-50"
                   />
                   {!editingDevice && (
                     <button 
                       type="button"
                       onClick={() => fetchDeviceFeatures(deviceIdInputRef.current?.value || "")}
-                      className="absolute right-2 top-2 bottom-2 bg-indigo-600 hover:bg-indigo-500 text-white px-3 rounded-xl transition-colors"
+                      className="absolute right-1 top-1 bottom-1 bg-[#004b93] hover:bg-[#005bb5] text-white px-3 transition-colors"
                     >
                       {isLoadingFeatures ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Search size={18} />}
                     </button>
@@ -632,7 +631,7 @@ const togglePower = async (deviceId: string, featureCode: string) => {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 px-1">
+                <label className="block text-[10px] font-bold text-[#888888] uppercase tracking-widest mb-2">
                   Nome do Aparelho
                 </label>
                 <input 
@@ -641,18 +640,18 @@ const togglePower = async (deviceId: string, featureCode: string) => {
                   required
                   defaultValue={editingDevice?.name}
                   placeholder="Ex: Smart TV" 
-                  className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-5 py-4 focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-white"
+                  className="w-full bg-[#0a0a0a] border border-[#222222] rounded-none px-4 py-3 focus:border-[#004b93] outline-none transition-all text-white"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 px-1">
+                <label className="block text-[10px] font-bold text-[#888888] uppercase tracking-widest mb-2">
                   Localização
                 </label>
                 <select 
                   name="location"
                   defaultValue={editingDevice?.location?.id}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-5 py-4 focus:ring-2 focus:ring-indigo-500 outline-none appearance-none text-white"
+                  className="w-full bg-[#0a0a0a] border border-[#222222] rounded-none px-4 py-3 focus:border-[#004b93] outline-none appearance-none text-white"
                 >
                   <option value="">Sem localização</option>
                   {locations.map(loc => (
@@ -661,25 +660,25 @@ const togglePower = async (deviceId: string, featureCode: string) => {
                 </select>
               </div>
 
-              <div className="space-y-4">
+              <div className="space-y-5">
                 <div className="flex justify-between items-center px-1">
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest">
-                    Funcoes (N)
+                  <label className="block text-[10px] font-bold text-[#888888] uppercase tracking-widest">
+                    Funções
                   </label>
                   {availableCodes.length > 0 && (
                     <button 
                       type="button"
                       onClick={() => setTempCharacteristics([...tempCharacteristics, { name: 'Nova Funcao', code: availableCodes[0] || '', state: false }])}
-                      className="text-indigo-400 hover:text-indigo-300 text-xs font-bold flex items-center gap-1"
+                      className="text-[#004b93] hover:text-white text-[10px] font-black uppercase flex items-center gap-1 transition-colors"
                     >
-                      <PlusCircle size={14} /> Add
+                      <PlusCircle size={14} /> Novo
                     </button>
                   )}
                 </div>
 
                 <div className="max-h-48 overflow-y-auto space-y-3 pr-2 custom-scrollbar">
                   {tempCharacteristics.map((char, idx) => (
-                    <div key={idx} className="bg-slate-950/50 p-3 rounded-2xl border border-slate-800 space-y-3">
+                    <div key={idx} className="bg-[#0a0a0a] p-4 rounded-none border border-[#222222] space-y-3">
                       <div className="flex gap-2">
                         <input 
                           placeholder="Nome da Funcao"
@@ -689,9 +688,9 @@ const togglePower = async (deviceId: string, featureCode: string) => {
                             updated[idx].name = e.target.value;
                             setTempCharacteristics(updated);
                           }}
-                          className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-1 text-sm outline-none focus:ring-1 focus:ring-indigo-500"
+                          className="flex-1 bg-transparent border-b border-[#333333] px-1 py-1 text-xs outline-none focus:border-[#004b93] text-white"
                         />
-                        <button type="button" onClick={() => setTempCharacteristics(tempCharacteristics.filter((_, i) => i !== idx))} className="text-slate-600 hover:text-red-400">
+                        <button type="button" onClick={() => setTempCharacteristics(tempCharacteristics.filter((_, i) => i !== idx))} className="text-[#444444] hover:text-[#e10600]">
                           <X size={16} />
                         </button>
                       </div>
@@ -703,26 +702,26 @@ const togglePower = async (deviceId: string, featureCode: string) => {
                             updated[idx].code = e.target.value;
                             setTempCharacteristics(updated);
                           }}
-                          className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-1 text-xs outline-none"
+                          className="flex-1 bg-[#1a1a1a] border border-[#333333] px-2 py-1 text-[10px] text-white outline-none focus:border-[#004b93]"
                         >
                           {availableCodes.map(c => <option key={c} value={c}>{c}</option>)}
                         </select>
-                        <span className="text-[10px] text-slate-500 font-bold uppercase">Vinculo Tuya</span>
+                        <span className="text-[8px] text-[#444444] font-black uppercase tracking-tighter">Tuya Sync</span>
                       </div>
                     </div>
                   ))}
                   {availableCodes.length === 0 && !isLoadingFeatures && (
-                    <p className="text-[10px] text-slate-600 text-center italic">Busque o DeviceID para listar as funcoes.</p>
+                    <p className="text-[10px] text-[#444444] text-center italic">Aguardando ID do hardware...</p>
                   )}
                 </div>
               </div>
 
               <button 
                 type="submit"
-                className="w-full bg-white text-slate-950 font-bold py-4 rounded-2xl hover:bg-indigo-50 transition-colors flex items-center justify-center gap-2 mt-4"
+                className="w-full bg-[#004b93] text-white font-black uppercase tracking-[0.3em] py-4 rounded-none hover:bg-[#005bb5] transition-all flex items-center justify-center gap-2 mt-6 shadow-[0_10px_20px_rgba(0,0,0,0.4)]"
               >
                 <Check size={20} />
-                {editingDevice ? 'Atualizar' : 'Criar Dispositivo'}
+                {editingDevice ? 'Atualizar' : 'Confirmar'}
               </button>
             </form>
           </div>
@@ -730,51 +729,51 @@ const togglePower = async (deviceId: string, featureCode: string) => {
       )}
 
       {/* Sidebar de Ambientes */}
-      <aside className={`fixed top-0 right-0 h-full bg-slate-900/95 backdrop-blur-xl border-l border-slate-800 transition-all duration-500 z-50 shadow-2xl flex flex-col ${isSidebarOpen ? 'w-full md:w-80' : 'w-0 overflow-hidden'}`}>
-        <div className="p-6 flex justify-between items-center border-b border-slate-800">
-          <h2 className="text-xl font-bold flex items-center gap-2">
-            <Palette size={20} className="text-indigo-400" />
+      <aside className={`fixed top-0 right-0 h-full bg-white border-l border-[#e3e8ee] transition-all duration-500 z-50 shadow-2xl flex flex-col ${isSidebarOpen ? 'w-full md:w-80' : 'w-0 overflow-hidden'}`}>
+        <div className="p-8 flex justify-between items-center border-b border-[#e3e8ee]">
+          <h2 className="text-xl font-semibold text-[#1a1f36] flex items-center gap-3">
+            <Palette size={22} className="text-[#635bff]" />
             Ambientes
           </h2>
-          <button onClick={() => setIsSidebarOpen(false)} className="p-2 hover:bg-slate-800 rounded-xl transition-colors">
-            <X size={20} />
+          <button onClick={() => setIsSidebarOpen(false)} className="p-2 text-[#4f566b] hover:text-[#1a1f36] rounded-xl transition-colors">
+            <X size={24} />
           </button>
         </div>
 
-        <div className="p-6 flex-1 overflow-y-auto space-y-8">
+        <div className="p-8 flex-1 overflow-y-auto space-y-10">
           {/* Formulário */}
           <form onSubmit={handleSaveLocation} className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-500 uppercase px-1">Nome do Ambiente</label>
+            <div className="space-y-1.5">
+              <label className="text-sm font-semibold text-[#4f566b] px-1">Nome do Ambiente</label>
               <input 
                 name="locName"
                 type="text"
                 required
                 placeholder="Ex: Cozinha Gourmet"
                 defaultValue={editingLocation?.name}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                className="w-full bg-white border border-[#e3e8ee] rounded-[8px] px-4 py-3 outline-none focus:border-[#635bff] transition-all text-[#1a1f36]"
               />
             </div>
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-500 uppercase px-1">Cor do Tema</label>
+            <div className="space-y-1.5">
+              <label className="text-sm font-semibold text-[#4f566b] px-1">Cor do Tema</label>
               <div className="flex gap-2">
                 <input 
                   name="locColor"
                   type="color"
                   defaultValue={editingLocation?.color || '#6366f1'}
-                  className="w-12 h-12 rounded-lg bg-transparent border-none cursor-pointer"
+                  className="w-12 h-12 rounded-[8px] bg-transparent border-none cursor-pointer"
                 />
-                <div className="flex-1 bg-slate-950 border border-slate-800 rounded-xl flex items-center px-4 text-sm text-slate-400 italic">
+                <div className="flex-1 bg-[#f6f9fc] border border-[#e3e8ee] rounded-[8px] flex items-center px-4 text-xs text-[#4f566b] italic">
                   Escolha a cor do ambiente
                 </div>
               </div>
             </div>
-            <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2">
+            <button type="submit" className="w-full bg-[#635bff] hover:shadow-md text-white font-bold py-3 rounded-[8px] transition-all flex items-center justify-center gap-2">
               {editingLocation ? <Edit3 size={18}/> : <Plus size={18} />}
               {editingLocation ? 'Atualizar Ambiente' : 'Adicionar Ambiente'}
             </button>
             {editingLocation && (
-              <button onClick={() => setEditingLocation(null)} type="button" className="w-full text-slate-500 text-xs hover:text-white underline">
+              <button onClick={() => setEditingLocation(null)} type="button" className="w-full text-[#4f566b] text-xs hover:text-[#1a1f36] underline">
                 Cancelar Edição
               </button>
             )}
@@ -782,25 +781,25 @@ const togglePower = async (deviceId: string, featureCode: string) => {
 
           {/* Lista */}
           <div className="space-y-3">
-            <h3 className="text-xs font-bold text-slate-500 uppercase px-1">Seus Ambientes</h3>
+            <h3 className="text-sm font-semibold text-[#1a1f36] px-1">Seus Ambientes</h3>
             {locations.map(loc => (
-              <div key={loc.id} className="group flex items-center justify-between bg-slate-950/50 p-3 rounded-2xl border border-slate-800 hover:border-slate-700 transition-all">
+              <div key={loc.id} className="group flex items-center justify-between bg-white p-4 rounded-[8px] border border-[#e3e8ee] hover:border-[#635bff] transition-all">
                 <div className="flex items-center gap-3">
                   <div style={{ backgroundColor: loc.color }} className="w-3 h-3 rounded-full shadow-sm" />
-                  <span className="text-sm font-medium">{loc.name}</span>
+                  <span className="text-sm font-medium text-[#1a1f36]">{loc.name}</span>
                 </div>
                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button onClick={() => setEditingLocation(loc)} className="p-2 text-slate-500 hover:text-white transition-colors">
+                  <button onClick={() => setEditingLocation(loc)} className="p-2 text-[#4f566b] hover:text-[#1a1f36] transition-colors">
                     <Edit3 size={14} />
                   </button>
-                  <button onClick={() => removeLocation(loc.id)} className="p-2 text-slate-500 hover:text-red-400 transition-colors">
+                  <button onClick={() => removeLocation(loc.id)} className="p-2 text-[#4f566b] hover:text-[#ff4d4d] transition-colors">
                     <Trash2 size={14} />
                   </button>
                 </div>
               </div>
             ))}
             {locations.length === 0 && (
-              <p className="text-center text-slate-600 text-xs py-4">Nenhum ambiente criado.</p>
+              <p className="text-center text-[#4f566b] text-xs py-4">Nenhum ambiente criado.</p>
             )}
           </div>
         </div>
