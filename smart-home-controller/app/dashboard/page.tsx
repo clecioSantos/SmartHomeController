@@ -25,6 +25,7 @@ import {
   Edit3,
   Check,
   Settings2,
+  Camera,
   Palette,
   ChevronRight, // Mantido para compatibilidade, embora não usado diretamente no dashboard atual
   Search,
@@ -42,11 +43,67 @@ const tuyaService = new TuyaService();
 const saveConfigUseCase = new SaveDashboardConfigUseCase(dashboardRepo);
 const updateDeviceUseCase = new UpdateDeviceStateUseCase(tuyaService);
 
+function CameraStream({ streamName }: { streamName: string }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  
+  // Monta a URL seguindo o padrão do servidor de câmeras
+  const fullUrl = `http://localhost:8889/${streamName}/whep`;
+
+  useEffect(() => {
+    if (!videoRef.current || !streamName) return;
+
+    const pc = new RTCPeerConnection({
+      iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+    });
+
+    pc.ontrack = (event) => {
+      if (videoRef.current) {
+        videoRef.current.srcObject = event.streams[0];
+      }
+    };
+
+    pc.addTransceiver("video", { direction: "recvonly" });
+
+    const init = async () => {
+      try {
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+
+        const res = await fetch(fullUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/sdp" },
+          body: offer.sdp
+        });
+
+        if (res.ok) {
+          const answer = await res.text();
+          await pc.setRemoteDescription({ type: "answer", sdp: answer });
+        }
+      } catch (err) {
+        console.error("WebRTC Error:", err);
+      }
+    };
+
+    init();
+    return () => pc.close();
+  }, [streamName, fullUrl]);
+
+  return (
+    <video 
+      ref={videoRef} 
+      autoPlay 
+      muted 
+      playsInline 
+      className="w-full h-full object-cover rounded-sm bg-black"
+    />
+  );
+}
+
 export default function DashboardPage() {
   // Hook para gerenciar a largura do container manualmente
   const containerRef = useRef<HTMLDivElement>(null);
   const deviceIdInputRef = useRef<HTMLInputElement>(null);
-  const [width] = useState(1200);
+  const [width] = useState(1800);
   const [isMounted, setIsMounted] = useState(false);
 
   const [locations, setLocations] = useState<Location[]>([
@@ -90,6 +147,7 @@ export default function DashboardPage() {
   const [availableCodes, setAvailableCodes] = useState<string[]>([]);
   const [isLoadingFeatures, setIsLoadingFeatures] = useState(false);
   const [tempCharacteristics, setTempCharacteristics] = useState<Characteristic[]>([]);
+  const [isAddingCamera, setIsAddingCamera] = useState(false);
 
   /////////////////////////////////////////////////////////////////////////////////////////////////////////
   //
@@ -249,6 +307,11 @@ export default function DashboardPage() {
     const deviceId = formData.get('deviceId') as string;
     const locationId = formData.get('location') as string;
     const location = locations.find(l => l.id === locationId);
+    const cameraName = formData.get('cameraName') as string;
+
+    const finalChars = isAddingCamera 
+      ? [{ name: 'Stream', code: 'camera_url', state: cameraName }]
+      : tempCharacteristics;
 
     let finalDevices: Device[];
     let finalLayouts: Layouts;
@@ -258,7 +321,7 @@ export default function DashboardPage() {
         ...d, 
         name, 
         location: location || null, // Firestore não aceita undefined, use null
-        characteristics: tempCharacteristics 
+        characteristics: finalChars 
       } : d);
       finalLayouts = { ...layouts }; // Layouts não mudam ao editar detalhes do dispositivo
     } else {
@@ -273,7 +336,7 @@ export default function DashboardPage() {
         id: newId,
         name,
         location: location || null, // Firestore não aceita undefined, use null
-        characteristics: tempCharacteristics
+        characteristics: finalChars
       };
       finalDevices = [...devices, newDevice];
 
@@ -285,9 +348,11 @@ export default function DashboardPage() {
       availableBreakpoints.forEach((bp) => {
         const existingLayout = layouts[bp] || [];
         const nextX = (existingLayout.length * 2) % (columnCounts[bp] || 2);
+        const width = isAddingCamera ? 4 : 2;
+        const height = isAddingCamera ? 4 : 3;
         newLayoutsForNewDevice[bp] = [
           ...existingLayout, 
-          { i: newId, x: nextX, y: 99, w: 2, h: 3, minW: 2, minH: 3 }
+          { i: newId, x: nextX, y: 99, w: width, h: height, minW: 2, minH: 3 }
         ];
       });
       finalLayouts = newLayoutsForNewDevice;
@@ -358,6 +423,7 @@ export default function DashboardPage() {
   const closeModal = () => {
     setIsModalOpen(false);
     setEditingDevice(null);
+    setIsAddingCamera(false);
   };
 
   /////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -463,7 +529,19 @@ const togglePower = async (deviceId: string, featureCode: string) => {
           <button 
             onClick={() => {
               setEditingDevice(null);
+              setIsAddingCamera(true);
+              setIsModalOpen(true);
+            }}
+            className="bg-[#222222] hover:bg-[#333333] text-white px-6 py-2 rounded-none transition-all active:scale-95 font-bold uppercase text-xs tracking-[0.2em] border-b-2 border-white/10 flex items-center gap-2"
+          >
+            <Camera size={16} />
+            <span className="hidden sm:inline">Câmera</span>
+          </button>
+          <button 
+            onClick={() => {
+              setEditingDevice(null);
               setTempCharacteristics([]);
+              setIsAddingCamera(false);
               setIsModalOpen(true);
             }}
             className="bg-[#004b93] hover:bg-[#005bb5] text-white px-6 py-2 rounded-none transition-all active:scale-95 font-bold uppercase text-xs tracking-[0.2em] border-b-2 border-white/20"
@@ -474,11 +552,11 @@ const togglePower = async (deviceId: string, featureCode: string) => {
         </div>
       </header>
 
-      <div ref={containerRef} className="flex-1 w-full py-12 mx-auto" style={{ width: '1200px' }}>
+      <div ref={containerRef} className="flex-1 w-full py-12 mx-auto" style={{ width: '1800px' }}>
         <ResponsiveGridLayout
         className="layout"
           layouts={layouts}
-        breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
+        breakpoints={{ lg: 1800, md: 996, sm: 768, xs: 480, xxs: 0 }}
         cols={{ lg: 10, md: 8, sm: 6, xs: 4, xxs: 2 }}
         rowHeight={100}
           width={width}
@@ -494,6 +572,7 @@ const togglePower = async (deviceId: string, featureCode: string) => {
         {devices.map((device) => {
           const isOn = device.characteristics.find(c => c.name === 'Status')?.state === true;
           const themeColor = device.location?.color || '#004b93'; 
+          const cameraChar = device.characteristics.find(c => c.code === 'camera_url');
           
           return (
             <div 
@@ -507,7 +586,12 @@ const togglePower = async (deviceId: string, featureCode: string) => {
                 </div>
                 <div className="flex gap-1">
                   <button 
-                    onClick={() => { setEditingDevice(device); setTempCharacteristics(device.characteristics); setIsModalOpen(true); }}
+                    onClick={() => { 
+                      setEditingDevice(device); 
+                      setTempCharacteristics(device.characteristics); 
+                      setIsAddingCamera(!!cameraChar);
+                      setIsModalOpen(true); 
+                    }}
                     className="p-2 text-[#444444] hover:text-white transition-colors"
                   >
                     <Edit3 size={16} />
@@ -526,6 +610,11 @@ const togglePower = async (deviceId: string, featureCode: string) => {
                   </span>
                 </div>
 
+                {cameraChar ? (
+                  <div className="flex-1 min-h-0 bg-black rounded-sm overflow-hidden border border-[#222222]">
+                    <CameraStream streamName={cameraChar.state as string} />
+                  </div>
+                ) : (
                 <div className="mt-auto space-y-1.5">
                   {device.characteristics.map((char, idx) => (
                     <div key={idx} className="flex items-center justify-between bg-[#0a0a0a] p-3 rounded-none border border-[#222222]">
@@ -547,6 +636,7 @@ const togglePower = async (deviceId: string, featureCode: string) => {
                     </div>
                   ))}
                 </div>
+                )}
               </div>
             </div>
           );
@@ -565,11 +655,12 @@ const togglePower = async (deviceId: string, featureCode: string) => {
             </div>
 
             <h2 className="text-xl font-black uppercase tracking-[0.2em] text-white mb-8 border-l-4 border-[#004b93] pl-4">
-              {editingDevice ? 'Configurar' : 'Registrar'}
+              {editingDevice ? 'Configurar' : (isAddingCamera ? 'Adicionar Câmera' : 'Registrar')}
             </h2>
 
             <form className="space-y-6" onSubmit={handleSaveDevice}>
-              <div>
+              {!isAddingCamera && (
+                <div>
                 <label className="block text-[10px] font-bold text-[#888888] uppercase tracking-widest mb-2">
                   ID do Dispositivo
                 </label>
@@ -595,6 +686,7 @@ const togglePower = async (deviceId: string, featureCode: string) => {
                   )}
                 </div>
               </div>
+              )}
 
               <div>
                 <label className="block text-[10px] font-bold text-[#888888] uppercase tracking-widest mb-2">
@@ -626,6 +718,23 @@ const togglePower = async (deviceId: string, featureCode: string) => {
                 </select>
               </div>
 
+              {isAddingCamera && (
+                <div>
+                  <label className="block text-[10px] font-bold text-[#888888] uppercase tracking-widest mb-2">
+                    Identificador da Câmera
+                  </label>
+                  <input 
+                    name="cameraName"
+                    type="text" 
+                    required
+                    defaultValue={editingDevice?.characteristics.find(c => c.code === 'camera_url')?.state as string}
+                    placeholder="Ex: cam1" 
+                    className="w-full bg-[#0a0a0a] border border-[#222222] rounded-none px-4 py-3 focus:border-[#004b93] outline-none transition-all text-white"
+                  />
+                </div>
+              )}
+
+              {!isAddingCamera && (
               <div className="space-y-5">
                 <div className="flex justify-between items-center px-1">
                   <label className="block text-[10px] font-bold text-[#888888] uppercase tracking-widest">
@@ -681,6 +790,7 @@ const togglePower = async (deviceId: string, featureCode: string) => {
                   )}
                 </div>
               </div>
+              )}
 
               <button 
                 type="submit"
