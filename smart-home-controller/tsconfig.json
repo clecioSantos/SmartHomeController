@@ -17,10 +17,13 @@
       {
         "name": "next"
       }
-    ],
-    "baseUrl": ".",
+    ], 
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"],
+      "@domain/*": ["./src/domain/*"],
+      "@application/*": ["./src/application/*"],
+      "@infrastructure/*": ["./src/infrastructure/*"],
+      "@lib/*": ["./lib/*"]
     }
   },
   "include": [
@@ -29,7 +32,12 @@
     "**/*.tsx",
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts",
-    "**/*.mts"
-  ],
+    "**/*.mts", 
+    "./src/infrastructure/services/TuyaService.ts", 
+    "./src/infrastructure/repositories/FirebaseDashboardRepository.ts",
+    "./src/application/use-cases/SaveDashboardConfig.ts",
+    "./src/application/use-cases/UpdateDeviceStateUseCase.ts",
+    "./src/domain/entities/Device.ts", 
+    "./src/domain/repositories/IDashboardRepository.ts"  ],
   "exclude": ["node_modules"]
 }
