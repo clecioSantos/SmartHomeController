@@ -13,6 +13,7 @@ export class TuyaService {
       body: JSON.stringify({ Device_ID: deviceId, code, value }),
     });
     const data = await res.json();
+    console.log(data);
     return data;
   }
 }

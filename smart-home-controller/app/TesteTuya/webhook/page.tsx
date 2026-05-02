@@ -41,7 +41,7 @@ export default function Page() {
 
     const interval = setInterval(() => {
       loadStatus();
-    }, 2000);
+    }, 600000);
 
     return () => clearInterval(interval);
   }, []);

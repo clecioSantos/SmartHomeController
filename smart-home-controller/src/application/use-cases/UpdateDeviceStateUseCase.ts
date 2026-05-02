@@ -5,6 +5,7 @@ export class UpdateDeviceStateUseCase {
 
   async execute(deviceId: string, code: string, value: any): Promise<void> {
     // Orquestra a atualização física do hardware
+    console.log(deviceId + ' ' + code + ' ' + value);
     await this.tuyaService.updateDeviceState(deviceId, code, value);
   }
 }
