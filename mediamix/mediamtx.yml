@@ -1,0 +1,10 @@
+paths:
+  cam1:
+    source: rtsp://cxse:th45ae@192.168.1.101:554
+
+  cam2:
+    source: rtsp://kewt:6rncwh@192.168.1.100:554
+
+webrtc: yes
+webrtcAddress: :8889
+webrtcAllowOrigin: '*'
