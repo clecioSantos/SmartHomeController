@@ -8,8 +8,14 @@ const ResponsiveGridLayout = dynamic(
   { ssr: false }
 );
 import { Layouts, Layout, LayoutItem } from 'react-grid-layout';
-import { db } from '../../lib/firebase';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+
+// IMPORTAÇÕES ORGANIZADAS COM PATH ALIASES
+import { Device, Location, Characteristic } from '@domain/entities/Device';
+import { FirebaseDashboardRepository } from '@infrastructure/repositories/FirebaseDashboardRepository';
+import { SaveDashboardConfigUseCase } from '@application/use-cases/SaveDashboardConfig';
+import { TuyaService } from '@infrastructure/services/TuyaService';
+import { UpdateDeviceStateUseCase } from '@application/use-cases/UpdateDeviceStateUseCase';
+
 import { 
   Plus, 
   Trash2, 
@@ -29,26 +35,12 @@ import {
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 
+// Injeção de dependências inicializada fora do componente para performance
+const dashboardRepo = new FirebaseDashboardRepository();
+const tuyaService = new TuyaService();
 
-interface Characteristic {
-  name: string;
-  state: string | boolean | number;
-  code?: string;
-}
-
-interface Location {
-  id: string;
-  name: string;
-  color: string;
-}
-
-interface Device {
-  id: string;
-  name: string;
-  location?: Location;
-  characteristics: Characteristic[];
-  controlCode?: string;
-}
+const saveConfigUseCase = new SaveDashboardConfigUseCase(dashboardRepo);
+const updateDeviceUseCase = new UpdateDeviceStateUseCase(tuyaService);
 
 export default function DashboardPage() {
   // Hook para gerenciar a largura do container manualmente
@@ -111,14 +103,11 @@ export default function DashboardPage() {
   useEffect(() => {
     const loadRemoteData = async () => {
       try {
-        const docRef = doc(db, "smarthomeController", "dashboard_config");
-        const docSnap = await getDoc(docRef);
-
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          if (data.devices) setDevices(data.devices);
-          if (data.layouts) setLayouts(data.layouts);
-          if (data.locations) setLocations(data.locations);
+        const config = await dashboardRepo.loadConfig();
+        if (config) {
+          setDevices(config.devices);
+          setLayouts(config.layouts);
+          setLocations(config.locations);
         }
       } catch (error) {
         console.error("Erro ao carregar dados do Firestore:", error);
@@ -142,19 +131,9 @@ export default function DashboardPage() {
   const saveDataToFirestore = async (newDevices: Device[], newLayouts: Layouts, newLocations: Location[]) => {
     if (!isMounted) return;
     try {
-      // JSON.parse(JSON.stringify(...)) remove valores 'undefined' que o Firestore não aceita.
-      // Isso resolve o erro "Unsupported field value: undefined".
-      const payload = JSON.parse(JSON.stringify({
-        devices: newDevices,
-        layouts: newLayouts,
-        locations: newLocations,
-        updatedAt: Date.now()
-      }));
-      console.log("[Firestore] Tentando salvar configuração:", payload);
-
-      await setDoc(doc(db, "smarthomeController", "dashboard_config"), payload);
+      await saveConfigUseCase.execute({ devices: newDevices, layouts: newLayouts, locations: newLocations });
     } catch (error) {
-      console.error("Erro ao salvar no Firestore:", error);
+      console.error(error);
     }
   };
 
@@ -414,23 +393,10 @@ export default function DashboardPage() {
   //
   /////////////////////////////////////////////////////////////////////////////////////////////////////////
   async function updateDevice(value: boolean, deviceId: string, code: string) {
-    console.log(`[Tuya API] Enviando comando: Dispositivo=${deviceId}, Função=${code}, Valor=${value}`);
     try {
-      const res = await fetch("/api/tuya/status", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ 
-            Device_ID: deviceId,
-            value: value,
-            code: code
-         }),
-      });
-      const data = await res.json();
-      console.log(`[Tuya API] Resposta recebida:`, data);
+      await updateDeviceUseCase.execute(deviceId, code, value);
     } catch (error) {
-      console.error(`[Tuya API] Erro na requisição:`, error);
+      console.error(error);
     }
   }
 
@@ -566,7 +532,7 @@ const togglePower = async (deviceId: string, featureCode: string) => {
                       <span className="text-[10px] font-bold text-[#666666] uppercase tracking-widest truncate mr-2">{char.name}</span>
                       {typeof char.state === 'boolean' ? (
                         <button 
-                          onClick={() => togglePower(device.id, char.code)}
+                          onClick={() => togglePower(device.id, char.code || '')}
                           className={`p-2 transition-all ${
                             char.state 
                               ? 'bg-[#004b93] text-white shadow-[0_0_15px_rgba(0,75,147,0.5)]' 
