@@ -7,8 +7,10 @@ const ResponsiveGridLayout = dynamic(
   () => import('react-grid-layout').then((m) => m.Responsive),
   { ssr: false }
 );
-import { Layouts, Layout, LayoutItem } from 'react-grid-layout';
-
+import { Layout, LayoutItem } from 'react-grid-layout';
+type Layouts = {
+  [key: string]: LayoutItem[];
+};
 // IMPORTAÇÕES ORGANIZADAS COM PATH ALIASES
 import { Device, Location, Characteristic } from '@domain/entities/Device';
 import { FirebaseDashboardRepository } from '@infrastructure/repositories/FirebaseDashboardRepository';
@@ -131,16 +133,12 @@ export default function DashboardPage() {
   const [editingLocation, setEditingLocation] = useState<Location | null>(null);
 
   // Gerenciamos o objeto 'layouts' completo para persistir posições em todos os breakpoints
-  const [layouts, setLayouts] = useState<Layouts>({
-    lg: [
-      { i: 'dev-1', x: 0, y: 0, w: 2, h: 3, minW: 2, minH: 3 },
-      { i: 'dev-2', x: 2, y: 0, w: 2, h: 3, minW: 2, minH: 3 },
-    ],
-    md: [],
-    sm: [],
-    xs: [],
-    xxs: []
-  });
+const [layouts, setLayouts] = useState<Layouts>({
+  lg: [
+    { i: 'dev-1', x: 0, y: 0, w: 2, h: 3, minW: 2, minH: 3 },
+    { i: 'dev-2', x: 2, y: 0, w: 2, h: 3, minW: 2, minH: 3 },
+  ]
+});
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingDevice, setEditingDevice] = useState<Device | null>(null);
@@ -255,7 +253,7 @@ export default function DashboardPage() {
 
     const interval = setInterval(() => {
       refreshDevicesStatus();
-    }, 2000);
+    }, 600000);
 
     return () => clearInterval(interval);
   }, [isMounted, devices]);
@@ -442,7 +440,9 @@ export default function DashboardPage() {
       const updatedLayouts = { ...prev };
       const breakpoints = Object.keys(updatedLayouts);
       breakpoints.forEach(key => {
-        updatedLayouts[key] = updatedLayouts[key].filter((l: Layout) => l.i !== id);
+        updatedLayouts[key] = updatedLayouts[key].filter(
+          (l) => l.i !== id
+        );
       });
       saveDataToFirestore(updatedDevices, updatedLayouts, locations); // Salva as alterações de layout após a remoção
       return updatedLayouts;
@@ -554,21 +554,21 @@ const togglePower = async (deviceId: string, featureCode: string) => {
 
       <div ref={containerRef} className="flex-1 w-full py-12 mx-auto" style={{ width: '1800px' }}>
         <ResponsiveGridLayout
-        className="layout"
-          layouts={layouts}
-        breakpoints={{ lg: 1800, md: 996, sm: 768, xs: 480, xxs: 0 }}
-        cols={{ lg: 10, md: 8, sm: 6, xs: 4, xxs: 2 }}
-        rowHeight={100}
-          width={width}
-        draggableHandle=".grid-drag-handle"
-        compactType="vertical"
-        preventCollision={false}
-        onLayoutChange={(currentLayout, allLayouts) => {
-          setLayouts(allLayouts);
-          saveDataToFirestore(devices, allLayouts, locations); // Salva as alterações de layout
-        }}
-        margin={[30, 30]}
-      >
+          {...({
+            className: "layout",
+            layouts,
+            breakpoints: { lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 },
+            cols: { lg: 12, md: 10, sm: 6, xs: 4, xxs: 2 },
+            rowHeight: 100,
+            width,
+            draggableHandle: ".grid-drag-handle",
+            compactType: "vertical",
+            preventCollision: false,
+            onLayoutChange: (currentLayout: Layout, allLayouts: Layouts) => {
+              setLayouts(allLayouts);
+            }
+          } as any)}
+        >
         {devices.map((device) => {
           const isOn = device.characteristics.find(c => c.name === 'Status')?.state === true;
           const themeColor = device.location?.color || '#004b93'; 

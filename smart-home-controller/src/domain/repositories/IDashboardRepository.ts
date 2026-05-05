@@ -1,6 +1,8 @@
 import { Device, Location } from '../entities/Device';
-import { Layouts } from 'react-grid-layout';
-
+import { Layout, LayoutItem } from 'react-grid-layout';
+type Layouts = {
+  [key: string]: LayoutItem[];
+};
 export interface DashboardConfig {
   devices: Device[];
   layouts: Layouts;

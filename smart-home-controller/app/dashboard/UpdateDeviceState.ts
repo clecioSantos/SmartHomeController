@@ -1,4 +1,4 @@
-import { TuyaService } from '../../../src/infrastructure/services/TuyaService';
+import { TuyaService } from '@infrastructure/services/TuyaService';
 
 export class UpdateDeviceStateUseCase {
   constructor(private tuyaService: TuyaService) {}
